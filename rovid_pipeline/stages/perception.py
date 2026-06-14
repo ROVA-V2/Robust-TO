@@ -35,13 +35,30 @@ import numpy as np
 
 from ..tools.base import ToolBase, ToolResult
 from ..tools.selection_tools import AssessQuality, RetrieveFrames, SelectFrames
-from ..reward import estimate_optimal_subqueries
 
 
 # Confidence below which an optional single retrieve-and-retry refinement is
 # attempted during evidence acquisition (case study, Tab. 7).  Bounded to one
 # refinement per sub-query so the trajectory stays well-defined for the reward.
 THETA_REFINE = 0.4
+
+# Generous hard safety cap on the number of sub-queries the policy may emit.
+# This is NOT m*: the policy proposes the number of sub-queries m freely, and the
+# frozen-m* sub-query efficiency reward (Section 3.3, reward.py) is what shapes m
+# toward the optimum during GRPO.  Capping the decomposition at m* (as an earlier
+# revision did) would make m <= m* by construction, so the over-decomposition
+# penalty R_min-sq = exp(-alpha*max(0, m - m*)) could never fire — defeating the
+# very signal the reward is meant to provide.  The cap here only guards against
+# pathological runaway decompositions; it matches the upper bound of K (=12).
+MAX_SUBQUERIES = 12
+
+# Below this dominant raw component severity, the selected frame set is treated as
+# effectively clean for the deterministic routing fallback, so clean inputs are
+# routed to the clean-preferred tool (matching "clean video -> standard
+# reasoning", Section 3.1).  This only affects the fallback used when the host
+# VLM's routing decision is unavailable/unparseable; the primary Stage-2 router
+# sees the actual per-component severities and decides in-context (Section 3.2).
+CLEAN_EPS = 0.15
 
 
 @dataclass
@@ -166,6 +183,11 @@ class DisturbanceAwarePerception:
         pool_frames = frames[pool_idx]     if pool_idx     else np.empty((0, *frames.shape[1:]), frames.dtype)
 
         # ── Averaged disturbance profile d̄ for routing (Section 3.2) ─────────
+        # Routing identifies the DOMINANT corruption type from the raw, absolute
+        # per-component severities (each already in [0,1] by construction).  This
+        # is intentionally NOT the min-max-normalised aggregate d(f_i): argmax
+        # over absolute severities answers "which degradation is strongest here",
+        # whereas the normalised aggregate (Eq. 2) is for ranking frames.
         def _mean_over(arr, idx):
             return float(np.mean(arr[idx])) if idx and len(arr) > max(idx) else 0.0
         profile = {
@@ -249,7 +271,14 @@ class DisturbanceAwarePerception:
         self, query, optimal_subqueries=None,
         selected_frames=None, disturbance_profile=None,
     ) -> List[Tuple[str, str]]:
-        target = optimal_subqueries or estimate_optimal_subqueries(query, agent_fn=self.agent)
+        # NOTE: m* (optimal_subqueries) is deliberately NOT passed into the
+        # decomposition prompt.  The paper conditions decomposition on "the
+        # original question and the selected frames" only, and keeps the frozen
+        # m* estimator OUT of the policy to prevent reward gaming (Section 3.3).
+        # m* influences training solely through the sub-query efficiency reward.
+        # The argument is accepted for backward compatibility but intentionally
+        # unused here.
+        _ = optimal_subqueries
 
         # Text+Frame conditioning (App. E.1, Tab. 9): describe the selected
         # frames so decomposition is grounded in visual content, not text alone.
@@ -279,7 +308,8 @@ class DisturbanceAwarePerception:
             "1. Identify the distinct perceptual demands implied by the question.\n"
             "2. For each demand, formulate exactly one atomic sub-query.\n"
             "3. Assign a semantic type: one of [spatial, temporal, attribute, action, text].\n"
-            f"4. Minimize the total number of sub-queries. Target about {target}.\n\n"
+            "4. Use as few sub-queries as possible while still covering every "
+            "perceptual demand the question requires.\n\n"
             f"Input:\n  Video context: {video_description}\n"
             f"  Disturbance profile of selected frames: {dist_str}\n"
             f"  Question: {query}\n\n"
@@ -304,7 +334,10 @@ class DisturbanceAwarePerception:
                     if s:
                         pairs.append((s, t))
                 if pairs:
-                    return pairs[:max(target, 1)]
+                    # Do NOT truncate to m* (`target`): the policy decides how many
+                    # sub-queries to emit, and the frozen-m* reward shapes that
+                    # number (Section 3.3).  Only a generous safety cap is applied.
+                    return pairs[:MAX_SUBQUERIES]
         except Exception:
             pass
         return [(query, "spatial")]
@@ -323,7 +356,7 @@ class DisturbanceAwarePerception:
         if len(candidates) == 1:
             return candidates[0]
 
-        no_corruption = max(profile.values()) < 1e-6
+        no_corruption = max(profile.values()) < CLEAN_EPS
         corruption = "clean" if no_corruption else dominant
 
         # Stage 2: let the host VLM pick among candidates under the profile.

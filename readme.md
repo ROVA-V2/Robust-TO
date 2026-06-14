@@ -60,8 +60,8 @@ c_j = c_intrinsic_j  ×  ρ(F)
 
 `ρ(F)` is the mean of the **K = ⌈n/3⌉ smallest** values of `(1 − d(f))` (the most
 corrupted frames), so a single clean frame cannot mask catastrophic corruption in
-the others (Eq. 4; ablated in Table 11 — uniform mean loses 3.7 pts on clean
-UrbanVideo). Intrinsic confidences are clipped to `[0.01, 1.0]`.
+the others (Eq. 4; ablating worst-K against a uniform mean loses 3.3 pts on the
+confidence-interface ablation). Intrinsic confidences are clipped to `[0.01, 1.0]`.
 
 ### Three-tier synthesis (App. E.3)
 
@@ -131,19 +131,21 @@ once the tool is registered — nothing in the orchestration layer needs editing
 ```
 R_cc(c_j, T_j) = c_j − λ·cost(T_j)                         # per call   (Eq. 5),  λ = 0.5
 R_cc^total(τ)  = (1/N_call) Σ_k R_cc                        # trajectory (Eq. 6)
-R_min-sq       = exp(−α·max(0, n − N*))                     # (Eq. 7),    α = 0.2
-R_qual         = (1 − exp(−β·n/max(N*,1)))·mean_conf        # (Eq. 8),    β = 1.0
-R_subq         = ½(R_min-sq + R_qual)                       # (Eq. 9)
+R_min-sq       = exp(−α·max(0, m − m*))                     # (Eq. 7),    α = 0.2
+R_qual         = (1 − exp(−β·m/max(m*,1)))·mean_conf        # (Eq. 8),    β = 1.0
+R_subq         = R_min-sq + R_qual                          # (Eq. 9, sum)
 R_total        = R_acc + w·(R_subq + R_cc^total + R_fmt)    # (Eq. 10),   w = 1/3
 ```
 
-`R_acc ∈ {−1, +1}`, `R_fmt ∈ {0, 1}`. The shared `w = 1/3` keeps the auxiliary
-sum's magnitude ≤ 1, matching `|R_acc|` (Eq. 10 / Sec. 3.3). Table 19 lists
-`w_subq = w_cc = w_fmt = 0.3`, which agrees with `w = 1/3` up to rounding; pass
-`w_subq/w_cc/w_fmt=0.3` to `compute_trajectory_reward` to reproduce Table 19
-verbatim. `N*(q)` is estimated once per question by a **frozen** text-only VLM
-(Qwen2.5-7B-Instruct in the paper) to prevent reward gaming — pass it via
-`estimator_fn`, distinct from the policy VLM.
+`R_acc ∈ {−1, +1}`, `R_fmt ∈ {0, 1}`. The shared `w = 1/3` scales the auxiliary
+terms (Eq. 10 / Sec. 3.3). Table 19 lists `w_subq = w_cc = w_fmt = 0.3`, which
+agrees with `w = 1/3` up to rounding; pass `w_subq/w_cc/w_fmt=0.3` to
+`compute_trajectory_reward` to reproduce Table 19 verbatim. `m*(q)` — the optimal
+number of sub-queries — is estimated once per question by a **frozen** text-only
+VLM (Qwen2.5-7B-Instruct in the paper) to prevent reward gaming, and is used ONLY
+in the reward: the policy decomposes the query freely (conditioned on the
+question and selected frames), and `m*` shapes the sub-query count through
+`R_subq`. Pass it via `estimator_fn`, distinct from the policy VLM.
 
 ---
 
@@ -229,6 +231,18 @@ ape_tools/
 evals/
 ├── generate_urbanvideo.py   # UrbanVideo-Bench (LP/CF/PE/AG), MCQ accuracy
 └── generate_vsi.py          # VSI-Bench (RDist/RDir/RP/AO), MCQ accuracy
+
+tests/
+└── test_pipeline.py         # dependency-light smoke tests (stub VLM, no checkpoints)
+```
+
+### Running the smoke tests
+
+```bash
+# No checkpoints needed — stubs the VLM/detector and runs on synthetic frames.
+ROVID_SKIP_MODEL_LOAD=1 PYTHONPATH=. python tests/test_pipeline.py
+# or, with pytest:
+ROVID_SKIP_MODEL_LOAD=1 PYTHONPATH=. python -m pytest tests/ -q
 ```
 
 ---
@@ -265,5 +279,5 @@ summary JSON to `--output_dir`. The dataset loaders assume a simple MCQ schema
 | Confidence (Eq. 4) | ρ(F) aggregator / clip | worst-K, K=⌈n/3⌉ / [0.01, 1.0] |
 | Synthesis (App. E.3) | HIGH / LOW tiers | c≥0.7 ∧ d<0.3 / c<0.3 ∨ d≥0.7 |
 | Reward (Eqs. 5–10) | λ / α / β / w | 0.5 / 0.2 / 1.0 / 1/3 |
-| Reward | N* estimator | frozen Qwen2.5-7B-Instruct (text-only) |
+| Reward | m* estimator | frozen Qwen2.5-7B-Instruct (text-only) |
 ```

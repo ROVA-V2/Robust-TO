@@ -280,7 +280,7 @@ class RobustTOPipeline:
     ----------
     agent_fn      : fn(prompt) -> str            (host VLM, text-only orchestration)
     vlm_fn        : fn(prompt, frames) -> str    (host VLM, vision + language)
-    estimator_fn  : fn(prompt) -> str            (FROZEN VLM for N*; defaults to
+    estimator_fn  : fn(prompt) -> str            (FROZEN VLM for m*; defaults to
                     agent_fn, but pass a separate frozen model to follow the
                     paper and avoid reward gaming — Section 3.3)
     extra_tools   : dict {name: ToolBase} of additional perception tools to
@@ -337,7 +337,7 @@ class RobustTOPipeline:
 
         Returns a dict: answer, reasoning, reward, n_tool_calls, info.
         """
-        # N* is estimated ONCE per question by the frozen estimator (Section 3.3)
+        # m* is estimated ONCE per question by the frozen estimator (Section 3.3)
         n_opt = estimate_optimal_subqueries(query, agent_fn=self.estimator_fn)
 
         # ── Disturbance-Aware Adaptive Perception (Section 3.2) ──────────────
@@ -371,7 +371,7 @@ class RobustTOPipeline:
                 "selected_k":       len(perc.selected_indices),
                 "pool_size":        len(perc.pool_indices),
                 "n_sub_queries":    len(perc.sub_queries),
-                "optimal_subq_N*":  n_opt,
+                "optimal_subq_m*":  n_opt,
                 "mean_disturbance": float(perc.disturbance_scores.mean())
                                     if len(perc.disturbance_scores) else 0.0,
             },
@@ -409,7 +409,7 @@ def main():
     print("\nPipeline stats:")
     print(f"  Tool calls       : {result['n_tool_calls']}")
     print(f"  Selected K        : {i['selected_k']}   Pool: {i['pool_size']}")
-    print(f"  Sub-queries (N*)  : {i['n_sub_queries']} ({i['optimal_subq_N*']})")
+    print(f"  Sub-queries (m*)  : {i['n_sub_queries']} ({i['optimal_subq_m*']})")
     print(f"  Mean disturbance  : {i['mean_disturbance']:.3f}")
     r = result["reward"]
     print("\nReward breakdown (GRPO, Eq. 10):")

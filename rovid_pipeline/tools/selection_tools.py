@@ -1,40 +1,42 @@
 """
-RoVid — Stage 1 Selection Tools
+Robust-TO — Stage 1 Selection Tools
 
 Implements the three selection tools described in Section 3.2:
 
     assess_quality  : parameter-free IQA scoring per frame   (cost 0.10)
-    select_frames   : joint reliability–informativeness rank  (cost 0.15)
+    select_frames   : reliability-relevance ranking          (cost 0.15)
     retrieve_frames : disturbance-aware retrieval from pool P (cost 0.20)
 
 All tools share the unified (result, confidence) interface from base.py.
 
-FIXES applied in this file
---------------------------
-FIX (Inconsistency 2 — disturbance weights):
-    Original code used unequal weights W1=0.5, W2=0.25, W3=0.25.
-    The paper (Section C, Eq. 2) explicitly states all three components
-    are "weighted equally" after min-max normalisation: w1=w2=w3=1/3.
+Alignment with the paper
+-------------------------
+assess_quality (Eq. 2):
+    d(f_i) = mean(d_blur(f_i), d_bright(f_i), d_occl(f_i))
+    Each component is min-max normalised across the video before averaging, so
+    blur, brightness and occlusion contribute on a comparable scale (Section C).
+    Equal averaging is exactly the paper's mean; we expose both the raw [0,1]
+    per-component severities and their min-max-normalised versions.
 
-FIX (Inconsistency 3 — brightness score formula):
-    Original code used raw uint8 grayscale mean with a /128 denominator
-    and center at 128.0.  The paper (Eq. 12) uses the V-channel of HSV
-    space normalised to [0, 1] with center μ_ref=0.5:
-        d_bright = 2 * |μ_lum − 0.5|
-    Fixed to convert to [0,1] range and use μ_ref=0.5.
+    Component formulas (Appendix, Eqs. 11-13):
+      d_blur   = 1 - min(1, Var(Laplacian) / tau_blur)         (tau_blur = 500)
+      d_bright = 2 * |mu_lum - mu_ref|                          (mu_ref   = 0.5)
+      d_occl   = 1 - |{p : G(p) > tau_edge}| / (H*W)            (tau_edge  = 30)
+    with G the Sobel gradient magnitude.
 
-FIX (Inconsistency 4 — occlusion score formula):
-    Original code used an adaptive threshold (mean + std of gradient)
-    and a non-paper *10 scaling factor.  The paper (Eq. 13) uses a fixed
-    Sobel-magnitude threshold τ_edge=30 with no additional scaling:
-        d_occl = 1 − |{p : G(p) > τ_edge}| / (H×W)
+select_frames (Eq. 3):
+    s(f_i) = (1 - d(f_i)) * sim(phi(f_i), psi(q)),   f_i in F,
+    where F is the set of valid frames whose reliability (1 - d) and query
+    relevance (sim) both exceed their thresholds (theta_rel, theta_sim).  Frames
+    outside F receive s(f_i) = 0 and are discarded, so the multiplicative score
+    only ever ranks frames that are simultaneously reliable and relevant; this
+    prevents a heavily corrupted but query-similar frame from entering the top-K.
+    K in [4, 12] is chosen adaptively by the host VLM from query complexity.
 
-FIX (Inconsistency 5 — select_frames threshold filtering):
-    Original code computed s(fi) = (1−d(fi)) * sim without applying the
-    paper's indicator-function thresholds (Eq. 3):
-        s(fi) = 1(1−d(fi) ≥ θ_rel) · 1(sim ≥ θ_sim) · (1−d(fi)) · sim
-    Frames failing either threshold must receive s(fi)=0 and be discarded.
-    Added θ_rel=0.55, θ_sim=0.30 as per the paper (Appendix B, Table 15).
+retrieve_frames:
+    The pool-P retrieval tool used during evidence acquisition (case study,
+    Tab. 7): re-ranks the non-selected pool by the same reliability-relevance
+    criterion to recover cleaner frames for a sub-query.
 """
 
 from __future__ import annotations
@@ -73,19 +75,15 @@ def _blur_score(frame: np.ndarray) -> float:
 
 def _brightness_score(frame: np.ndarray) -> float:
     """
-    d_bright from Eq. 12:  d_bright = 2 * |μ_lum(fi) − μ_ref|
+    d_bright from Eq. 12:  d_bright = 2 * |mu_lum(f_i) - mu_ref|
 
-    where μ_lum ∈ [0, 1] is the mean pixel intensity in the V channel
-    of HSV space and μ_ref = 0.5 (both under- and over-exposed penalised).
-
-    FIX: Original code used raw uint8 mean /128 with centre 128.0.
-    Paper uses [0,1]-normalised value with centre 0.5.
+    where mu_lum in [0, 1] is the mean pixel intensity (the V channel of HSV
+    space; equivalent to normalised luminance for grayscale) and mu_ref = 0.5,
+    so both under- and over-exposure are penalised symmetrically.
     """
     gray = _to_gray(frame)
-    # Normalise to [0,1] (equivalent to HSV V channel for grayscale)
-    # Clip normalised mean to [0,1] before applying formula to handle
-    # floating-point imprecision from luminance coefficient rounding (0.2989+
-    # 0.5870+0.1140=0.9999 ≠ 1.0).
+    # Normalise to [0,1].  Clip before applying the formula to absorb the tiny
+    # rounding in the luminance coefficients (0.2989+0.5870+0.1140=0.9999).
     mu_lum = float(np.clip(gray.mean() / 255.0, 0.0, 1.0))
     d = 2.0 * abs(mu_lum - MU_REF)
     return float(np.clip(d, 0.0, 1.0))
@@ -94,18 +92,12 @@ def _brightness_score(frame: np.ndarray) -> float:
 def _occlusion_score(frame: np.ndarray) -> float:
     """
     d_occl from Eq. 13:
-        d_occl = 1 − |{p : G(p) > τ_edge}| / (H×W)
+        d_occl = 1 - |{p : G(p) > tau_edge}| / (H*W)
 
-    where G(p) = sqrt(Gx(p)² + Gy(p)²) is the Sobel gradient magnitude
-    and τ_edge=30.
-
-    FIX (Inconsistency 4b — gradient operator):
-        Previous code used np.diff (simple [1, -1] finite differences)
-        instead of proper Sobel filters.  The paper (Eq. 13, Sec. C)
-        specifies Sobel gradient magnitude, which uses 3×3 convolution
-        kernels [-1,0,1; -2,0,2; -1,0,1] and its transpose.  Sobel
-        produces stronger, more noise-tolerant gradients than np.diff,
-        which affects the edge pixel count and thus the occlusion score.
+    where G(p) = sqrt(Gx(p)^2 + Gy(p)^2) is the Sobel gradient magnitude and
+    tau_edge = 30.  Frames lacking informative edge structure (a large flat /
+    occluded region) score high.  Sobel (3x3) is used rather than a plain finite
+    difference for stronger, more noise-tolerant gradients, as specified.
     """
     gray = _to_gray(frame)
     H, W = gray.shape
@@ -154,25 +146,31 @@ class AssessQuality(ToolBase):
     """
     Parameter-free IQA scoring per frame.
 
-    Eq. 2:  d(fi) = d_blur(fi) + d_bright(fi) + d_occl(fi)
-            (all three terms weighted equally after per-video min-max
-            normalisation, then average — Section C)
-
-    FIX: Original code used unequal weights (0.5, 0.25, 0.25).
-    Paper Section C states "weighted equally" → W1=W2=W3=1/3.
+    Eq. 2:  d(f_i) = mean(d_blur(f_i), d_bright(f_i), d_occl(f_i))
+            (each component min-max normalised across the video first, so the
+            three contribute on a comparable scale — Section C).  Equal averaging
+            of the three normalised components is exactly this mean.
 
     Returns
     -------
     result : dict with keys
-        'disturbance_scores' : np.ndarray of shape (N,)  — per-frame d(fi) ∈ [0,1]
-        'blur_scores'        : np.ndarray  — per-frame d_blur
-        'bright_scores'      : np.ndarray  — per-frame d_bright
-        'occl_scores'        : np.ndarray  — per-frame d_occl
+        'disturbance_scores' : np.ndarray (N,) — per-frame d(f_i) in [0,1] (Eq. 2)
+        'blur_scores'        : np.ndarray — raw per-frame d_blur   in [0,1]
+        'bright_scores'      : np.ndarray — raw per-frame d_bright in [0,1]
+        'occl_scores'        : np.ndarray — raw per-frame d_occl   in [0,1]
+        'blur_norm'          : np.ndarray — min-max-normalised d_blur
+        'bright_norm'        : np.ndarray — min-max-normalised d_bright
+        'occl_norm'          : np.ndarray — min-max-normalised d_occl
+
+    The RAW component severities are absolute (each already in [0,1] by
+    construction) and are what the router uses to identify the dominant
+    corruption type (Section 3.2); the min-max-normalised versions are what
+    Eq. 2 averages into d(f_i).
     """
 
     name = "assess_quality"
 
-    # Equal weights as stated in paper Section C
+    # Equal weights — averaging the three normalised components yields Eq. 2's mean.
     W_BLUR   = 1.0 / 3.0
     W_BRIGHT = 1.0 / 3.0
     W_OCCL   = 1.0 / 3.0
@@ -206,6 +204,9 @@ class AssessQuality(ToolBase):
             "blur_scores":        blur_scores,
             "bright_scores":      bright_scores,
             "occl_scores":        occl_scores,
+            "blur_norm":          blur_n.astype(np.float32),
+            "bright_norm":        bright_n.astype(np.float32),
+            "occl_norm":          occl_n.astype(np.float32),
         }, c_intrinsic
 
 
@@ -221,21 +222,21 @@ def _minmax_norm(arr: np.ndarray) -> np.ndarray:
 
 class SelectFrames(ToolBase):
     """
-    Joint reliability–informativeness ranking.
+    Reliability-relevance frame ranking.
 
     Eq. 3:
-        s(fi) = 1(1−d(fi) ≥ θ_rel) · 1(sim(φ(fi),ψ(q)) ≥ θ_sim)
-              · (1−d(fi)) · sim(φ(fi), ψ(q))
+        s(f_i) = (1 - d(f_i)) * sim(phi(f_i), psi(q)),   f_i in F
 
-    Frames failing either threshold receive s(fi)=0 and are discarded
-    (not forwarded to Stage 1 Step 1.3).
+    where F is the set of valid frames whose reliability (1 - d) and query
+    relevance (sim) BOTH exceed their thresholds (theta_rel, theta_sim).  Frames
+    outside F receive s(f_i) = 0 and are discarded (not forwarded downstream).
 
-    FIX (Inconsistency 5): Original code computed scores = reliability * similarity
-    without applying the indicator-function thresholds.  This allowed heavily
-    corrupted but query-relevant frames to rank in the top-K.  The paper is
-    explicit: "Frames that fail either threshold receive s(fi)=0 and are discarded."
+    Restricting the multiplicative score to F is what makes the coupling robust:
+    a heavily corrupted frame (1 - d small) is suppressed even when it is highly
+    query-relevant, so it can never be promoted into the top-K on relevance alone.
 
-    K is determined dynamically in [4, 12] by the host VLM (or heuristic fallback).
+    K is determined dynamically in [4, 12] by the host VLM (or a heuristic
+    fallback) from query complexity (Section 3.2).
     """
 
     name = "select_frames"
@@ -273,19 +274,30 @@ class SelectFrames(ToolBase):
         similarities = self._compute_similarities(frames, sub_query)
         reliability  = 1.0 - disturbance_scores   # (N,)
 
-        # Eq. 3 — indicator-function thresholds (FIX: was missing entirely)
-        reliable_mask  = reliability  >= self.theta_rel   # 1(1−d ≥ θ_rel)
-        relevant_mask  = similarities >= self.theta_sim   # 1(sim ≥ θ_sim)
+        # Eq. 3 — valid set F: reliability AND relevance both above threshold.
+        reliable_mask  = reliability  >= self.theta_rel   # 1 - d >= theta_rel
+        relevant_mask  = similarities >= self.theta_sim   # sim   >= theta_sim
         eligible_mask  = reliable_mask & relevant_mask
 
-        # Score = 0 for ineligible frames; multiplicative for eligible
+        # s(f_i) = (1-d)*sim for f_i in F; 0 otherwise (discarded).
         scores = np.where(eligible_mask, reliability * similarities, 0.0).astype(np.float32)
 
-        ranked_indices   = np.argsort(scores)[::-1]           # descending
-        selected_indices = sorted(ranked_indices[:K].tolist())
-        pool_indices     = sorted(ranked_indices[K:].tolist())
+        # BUG FIX: only rank and select frames that are *eligible* (score > 0).
+        # Paper: "frames outside F receive s(f_i)=0 and are discarded".
+        # The previous argsort over ALL frames filled top-K with ineligible (score=0)
+        # frames whenever eligible count < K, contaminating the selected set with
+        # corrupted frames and deflating c_intrinsic.
+        eligible_indices = np.where(eligible_mask)[0]         # indices of frames in F
+        eligible_scores  = scores[eligible_indices]           # their scores (all > 0)
+        ranked_among_eligible = np.argsort(eligible_scores)[::-1]   # descending
+        top_eligible = ranked_among_eligible[:K]               # at most K eligible frames
 
-        selected_scores = scores[ranked_indices[:K]]
+        selected_indices = sorted(eligible_indices[top_eligible].tolist())
+        # Pool = all non-selected frames (both ineligible and eligible-but-not-top-K)
+        selected_set = set(selected_indices)
+        pool_indices = sorted(i for i in range(N) if i not in selected_set)
+
+        selected_scores = eligible_scores[top_eligible]
         c_intrinsic = float(selected_scores.mean()) if len(selected_scores) > 0 else 0.0
         c_intrinsic = float(np.clip(c_intrinsic, 0.0, 1.0))
 
@@ -299,6 +311,12 @@ class SelectFrames(ToolBase):
         """
         sim(φ(fi), ψ(q)) with the shared VLM backbone when available.
         Falls back to neutral score (1.0) when no encoder is provided.
+
+        Contract: similarity_fn MUST return cosine similarities in [-1, 1].
+        The shift (x+1)/2 maps them to [0, 1] for threshold comparison.
+        If you pass a function that already returns [0, 1] (e.g., a random
+        stub), the shift will compress the range to [0.5, 1] — which is
+        harmless for threshold=0.30 but documents the expected contract.
         """
         if self.similarity_fn is None:
             return np.ones(len(frames), dtype=np.float32)

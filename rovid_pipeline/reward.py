@@ -11,15 +11,21 @@ forward pass so they are well-defined on a fixed-length trajectory:
         R_cc^total(tau) = (1 / N_call) * sum_k R_cc(c_j^(k), T_jk)
 
     Sub-query efficiency (Eqs. 7-9):
-        R_min-sq(n, N*)      = exp(-alpha * max(0, n - N*))                 (Eq. 7)
-        R_qual(n, N*, tau)   = (1 - exp(-beta * n/max(N*,1))) * mean_conf   (Eq. 8)
-        R_subq               = 0.5 * (R_min-sq + R_qual)                    (Eq. 9)
+        R_min-sq(m, m*)      = exp(-alpha * max(0, m - m*))                 (Eq. 7)
+        R_qual(m, m*, tau)   = (1 - exp(-beta * m/max(m*,1))) * mean_conf   (Eq. 8)
+        R_subq               = R_min-sq + R_qual                           (Eq. 9)
 
     Composite (Eq. 10):
         R_total = R_acc + w * (R_subq + R_cc^total + R_fmt),    w = 1/3
 
-    with R_acc in {-1, +1}, R_fmt in {0, 1}.  The shared w = 1/3 keeps the
-    auxiliary sum's magnitude at most 1, matching |R_acc| (Section 3.3).
+    with R_acc in {-1, +1}, R_fmt in {0, 1}.
+
+NOTE on R_subq (paper consistency)
+----------------------------------
+Section 3.3 states explicitly that the sub-query efficiency reward is the *sum*
+of its two terms: "R_subq = R_min-sq + R_qual(tau)".  An earlier revision of this
+code averaged them (0.5 * (R_min-sq + R_qual)); that has been corrected to the
+sum so the implementation matches the equation in the paper.
 
 NOTE on the auxiliary weight (paper consistency)
 ------------------------------------------------
@@ -30,10 +36,10 @@ These agree up to rounding (1/3 ~= 0.333 vs 0.3).  We default to the method's
 exact w = 1/3.  (Set w_subq/w_cc/w_fmt=0.3 to reproduce Table 19 verbatim.)
 The auxiliary weights are exposed as arguments below.
 
-N* (the question-conditional optimum) is estimated by a FROZEN off-the-shelf VLM
-(text-only Qwen2.5-7B-Instruct in the paper), decoupled from the policy VLM to
-prevent reward gaming (Section 3.3; policy-internal estimation costs 1.2 acc.
-points and raises reward variance 2.3x).
+m* (the question-conditional optimal number of sub-queries) is estimated by a
+FROZEN off-the-shelf VLM (text-only Qwen2.5-7B-Instruct in the paper), decoupled
+from the policy VLM to prevent reward gaming (Section 3.3; policy-internal
+estimation costs 1.2 acc. points and raises reward variance 2.3x).
 """
 
 from __future__ import annotations
@@ -87,12 +93,13 @@ def estimate_optimal_subqueries(
     agent_fn: Optional[Callable[[str], str]] = None,
 ) -> int:
     """
-    Estimate N*(q) once per query with a FROZEN estimator (Section 3.3).
+    Estimate m*(q) once per query with a FROZEN estimator (Section 3.3).
 
-    The paper uses a frozen text-only Qwen2.5-7B-Instruct, decoupled from the
-    policy VLM.  When no estimator is provided, a syntactic-complexity heuristic
-    is used.  Note: pass a frozen model here, NOT the policy VLM, to avoid the
-    reward gaming the paper warns about.
+    m* is the question-conditional optimal number of sub-queries.  The paper uses
+    a frozen text-only Qwen2.5-7B-Instruct, decoupled from the policy VLM.  When
+    no estimator is provided, a syntactic-complexity heuristic is used.  Note:
+    pass a frozen model here, NOT the policy VLM, to avoid the reward gaming the
+    paper warns about.
     """
     if agent_fn is not None:
         prompt = (
@@ -135,13 +142,13 @@ def subquery_reward(
     if optimal_subqueries is None:
         if query is None:
             raise ValueError("Either query or optimal_subqueries must be provided")
-        n_opt = estimate_optimal_subqueries(query, agent_fn=agent_fn)
+        m_opt = estimate_optimal_subqueries(query, agent_fn=agent_fn)
     else:
-        n_opt = max(int(optimal_subqueries), 1)
-    r_min_sq = math.exp(-alpha * max(0, n_subqueries - n_opt))           # Eq. 7
-    coverage = 1.0 - math.exp(-beta * n_subqueries / max(n_opt, 1))      # Eq. 8
+        m_opt = max(int(optimal_subqueries), 1)
+    r_min_sq = math.exp(-alpha * max(0, n_subqueries - m_opt))           # Eq. 7
+    coverage = 1.0 - math.exp(-beta * n_subqueries / max(m_opt, 1))      # Eq. 8
     r_qual   = coverage * mean_confidence                               # Eq. 8
-    return float(0.5 * (r_min_sq + r_qual))                             # Eq. 9
+    return float(r_min_sq + r_qual)                                     # Eq. 9 (sum)
 
 
 def format_reward(answer: str, response_text: Optional[str] = None) -> float:
@@ -178,7 +185,11 @@ def compute_trajectory_reward(
     w_fmt: float = W_FMT,
     lam: float = LAMBDA,
 ) -> TrajectoryReward:
-    """Eq. 10: R_total = w_acc*R_acc + w_subq*R_subq + w_cc*R_cc + w_fmt*R_fmt."""
+    """Eq. 10: R_total = w_acc*R_acc + w_subq*R_subq + w_cc*R_cc + w_fmt*R_fmt.
+
+    Equivalent to paper's R_acc + w*(R_subq + R_cc^total + R_fmt) when
+    w_acc=1 and w_subq=w_cc=w_fmt=w=1/3.
+    """
     if ground_truth is not None:
         correct = answer.strip().upper() == ground_truth.strip().upper()
         R_acc = 1.0 if correct else -1.0

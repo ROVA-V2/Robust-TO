@@ -1,21 +1,20 @@
 """
-RoVid Unified Tool Interface — Eq. 4 in the paper:
+Robust-TO — Unified Tool Interface  (Eq. 4 in the paper)
 
-    (rj, cj) = Tj(F, sq)
-    cj = c_intrinsic_j  *  ρ(F)
-    ρ(F) = worst-K mean of (1 − d(f)),  K = ceil(|F|/3)
+    (r_j, c_j) = T_j(F_j, sq)
+    c_j        = c_intrinsic_j  *  rho(F_j)
+    rho(F_j)   = mean of the K = ceil(|F_j|/3) smallest values of (1 - d(f))
 
-FIX (Inconsistency 1 — confidence aggregation):
-    The original code used a plain arithmetic mean for ρ(F).
-    The paper (Section 3.1, Eq. 4 and Table 11) explicitly requires a
-    worst-K mean with K=⌈|F|/3⌉ — the mean of the K *smallest* values of
-    (1−d(f)).  This prevents a single clean frame from masking catastrophic
-    corruption in others.  Using uniform mean instead loses 3.3 accuracy
-    points on clean data (Table 11).
+Every tool — selection or perception — implements this contract.  A tool's
+confidence is the product of its own self-assessed certainty (c_intrinsic) and
+the input reliability rho(F_j) of the frames it received, so confidence is high
+only when BOTH the tool is sure AND its input frames are clean.
 
-Every tool — selection or perception — must implement this contract.
-Confidence is jointly determined by the tool's own output quality AND
-the quality of the frames it received, coupling reliability to input quality.
+rho is a *conservative* (worst-K) mean: averaging only the K = ceil(n/3) least
+reliable frames ensures a single clean frame cannot mask catastrophic corruption
+in the others (Section 3.1; ablated against a uniform mean, which loses 3.3
+accuracy points on clean UrbanVideo-Bench).  Intrinsic confidences are clipped
+to [0.01, 1.0]; a failed/empty result yields c_j = 0 (pure cost at training).
 """
 
 from __future__ import annotations
