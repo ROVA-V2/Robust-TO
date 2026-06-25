@@ -1,5 +1,21 @@
 # Robust-TO
 
+<p align="center">
+  Yangfan He<sup>1,2</sup> &nbsp;&nbsp;&nbsp; Yujin Choi<sup>1,3</sup> &nbsp;&nbsp;&nbsp; Jaehong Yoon<sup>1,*</sup>
+</p>
+
+<p align="center">
+  <sup>1</sup>NTU Singapore &nbsp;&nbsp;&nbsp; <sup>2</sup>University of Minnesota, Twin Cities &nbsp;&nbsp;&nbsp; <sup>3</sup>UNIST
+</p>
+
+<p align="center">
+  <sup>*</sup>Corresponding Author
+</p>
+
+<!--
+yhe32@e.ntu.edu.sg, {cs-yujin.choi, jaehong.yoon}@ntu.edu.sg
+-->
+
 Reference implementation of **Robust-TO** (*Robust Video Understanding with Tool
 Orchestration*), the agentic framework from *“Confidence-Aware Tool Orchestration
 for Robust Video Understanding.”*
@@ -274,4 +290,3 @@ summary JSON to `--output_dir`. The dataset loaders assume a simple MCQ schema
 | Synthesis (App. E.3) | HIGH / LOW tiers | c≥0.7 ∧ d<0.3 / c<0.3 ∨ d≥0.7 |
 | Reward (Eqs. 5–10) | λ / α / β / w | 0.5 / 0.2 / 1.0 / 1/3 |
 | Reward | m* estimator | frozen Qwen2.5-7B-Instruct (text-only) |
-```
