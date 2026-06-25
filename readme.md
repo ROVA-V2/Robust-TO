@@ -4,19 +4,28 @@
 
 ### Confidence-Aware Tool Orchestration for Robust Video Understanding
 
+<!-- Replace the # placeholders with each author's homepage once available -->
 <p>
-  <b>Yangfan He</b><sup>1,2</sup> &nbsp;·&nbsp;
-  <b>Yujin Choi</b><sup>1,3</sup> &nbsp;·&nbsp;
-  <b>Jaehong Yoon</b><sup>1,&dagger;</sup>
+  <a href="#"><b>Yangfan&nbsp;He</b></a><sup>&nbsp;1,2</sup>
+  &emsp;
+  <a href="#"><b>Yujin&nbsp;Choi</b></a><sup>&nbsp;1,3</sup>
+  &emsp;
+  <a href="#"><b>Jaehong&nbsp;Yoon</b></a><sup>&nbsp;1,&dagger;</sup>
 </p>
 
 <p>
-  <sup>1</sup>&nbsp;NTU Singapore &nbsp;&nbsp;&nbsp;
-  <sup>2</sup>&nbsp;University of Minnesota, Twin Cities &nbsp;&nbsp;&nbsp;
-  <sup>3</sup>&nbsp;UNIST
+  <sub>
+    <sup>1</sup>&nbsp;<i>NTU&nbsp;Singapore</i>
+    &emsp;
+    <sup>2</sup>&nbsp;<i>University&nbsp;of&nbsp;Minnesota,&nbsp;Twin&nbsp;Cities</i>
+    &emsp;
+    <sup>3</sup>&nbsp;<i>UNIST</i>
+  </sub>
 </p>
 
-<sub><sup>&dagger;</sup>&nbsp;Corresponding Author</sub>
+<p>
+  <sub><sup>&dagger;</sup>&nbsp;Corresponding&nbsp;Author</sub>
+</p>
 
 <br/>
 
