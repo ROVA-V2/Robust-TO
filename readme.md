@@ -22,7 +22,7 @@
 
 <!-- Replace the # placeholders below with your real links once available -->
 <a href="#"><img src="https://img.shields.io/badge/Paper-arXiv-b31b1b.svg?style=flat-square" alt="Paper"></a>
-<a href="#"><img src="https://img.shields.io/badge/Project-Page-1f6feb.svg?style=flat-square" alt="Project Page"></a>
+<a href="https://rova-v2.github.io/"><img src="https://img.shields.io/badge/Project-Page-1f6feb.svg?style=flat-square" alt="Project Page"></a>
 <a href="#"><img src="https://img.shields.io/badge/Python-3.10-3776AB.svg?style=flat-square&logo=python&logoColor=white" alt="Python 3.10"></a>
 <a href="#"><img src="https://img.shields.io/badge/License-MIT-green.svg?style=flat-square" alt="License"></a>
 
