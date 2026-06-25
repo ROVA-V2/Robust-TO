@@ -1,30 +1,65 @@
+<div align="center">
+
 # Robust-TO
 
-<p align="center">
-  Yangfan He<sup>1,2</sup> &nbsp;&nbsp;&nbsp; Yujin Choi<sup>1,3</sup> &nbsp;&nbsp;&nbsp; Jaehong Yoon<sup>1,*</sup>
+### Confidence-Aware Tool Orchestration for Robust Video Understanding
+
+<p>
+  <b>Yangfan He</b><sup>1,2</sup> &nbsp;·&nbsp;
+  <b>Yujin Choi</b><sup>1,3</sup> &nbsp;·&nbsp;
+  <b>Jaehong Yoon</b><sup>1,&dagger;</sup>
 </p>
 
-<p align="center">
-  <sup>1</sup>NTU Singapore &nbsp;&nbsp;&nbsp; <sup>2</sup>University of Minnesota, Twin Cities &nbsp;&nbsp;&nbsp; <sup>3</sup>UNIST
+<p>
+  <sup>1</sup>&nbsp;NTU Singapore &nbsp;&nbsp;&nbsp;
+  <sup>2</sup>&nbsp;University of Minnesota, Twin Cities &nbsp;&nbsp;&nbsp;
+  <sup>3</sup>&nbsp;UNIST
 </p>
 
-<p align="center">
-  <sup>*</sup>Corresponding Author
-</p>
+<sub><sup>&dagger;</sup>&nbsp;Corresponding Author</sub>
+
+<br/>
+
+<!-- Replace the # placeholders below with your real links once available -->
+<a href="#"><img src="https://img.shields.io/badge/Paper-arXiv-b31b1b.svg?style=flat-square" alt="Paper"></a>
+<a href="#"><img src="https://img.shields.io/badge/Project-Page-1f6feb.svg?style=flat-square" alt="Project Page"></a>
+<a href="#"><img src="https://img.shields.io/badge/Python-3.10-3776AB.svg?style=flat-square&logo=python&logoColor=white" alt="Python 3.10"></a>
+<a href="#"><img src="https://img.shields.io/badge/License-MIT-green.svg?style=flat-square" alt="License"></a>
+
+</div>
 
 <!--
-yhe32@e.ntu.edu.sg, {cs-yujin.choi, jaehong.yoon}@ntu.edu.sg
+Contact: yhe32@e.ntu.edu.sg, {cs-yujin.choi, jaehong.yoon}@ntu.edu.sg
 -->
-
-Reference implementation of **Robust-TO** (*Robust Video Understanding with Tool
-Orchestration*), the agentic framework from *“Confidence-Aware Tool Orchestration
-for Robust Video Understanding.”*
-
-- **Robust-TO** — the method (this code).
 
 ---
 
-## Method overview
+Reference implementation of **Robust-TO** (*Robust Video Understanding with Tool
+Orchestration*), the agentic framework from the paper
+*“Confidence-Aware Tool Orchestration for Robust Video Understanding.”*
+
+> [!NOTE]
+> **TL;DR** — Every visual tool reports not only *what* it sees, but *how much* it
+> trusts what it sees. Robust-TO couples each tool's output to a calibrated
+> confidence and synthesizes evidence across reliability tiers in a single
+> feed-forward pass — no inference-time loops.
+
+---
+
+## 📑 Contents
+
+- [Method overview](#-method-overview)
+- [Tool library](#-tool-library-table-17)
+- [GRPO confidence-cost reward](#-grpo-confidence-cost-reward-section-33)
+- [Installation](#-installation)
+- [Usage](#-usage)
+- [Repository structure](#-repository-structure)
+- [Evaluation](#-evaluation)
+- [Key hyperparameters](#-key-hyperparameters-table-16)
+
+---
+
+## 🔭 Method overview
 
 Robust-TO addresses the **Blind Trust Problem**: video-QA pipelines delegate to
 visual tools without knowing how reliable those tools are on degraded input. Its
@@ -37,7 +72,7 @@ The pipeline is a **single feed-forward pass** (Fig. 2 in the paper) — there a
 high-reliability tier and the pipeline reduces to ordinary multi-fact reasoning
 with no overhead (Sec. 3.1).
 
-```
+```text
 Video V~ + Query q
         │
         ▼
@@ -62,7 +97,7 @@ Every tool returns a result tied to its source frames plus a calibrated
 confidence that multiplies the tool's own certainty by the **input reliability**
 of those frames:
 
-```
+```text
 (r_j, c_j) = T_j(F, sq)
 c_j = c_intrinsic_j  ×  ρ(F)
 ρ(F) = worst-K mean of (1 − d(f)),   K = ⌈|F| / 3⌉
@@ -75,11 +110,11 @@ confidence-interface ablation). Intrinsic confidences are clipped to `[0.01, 1.0
 
 ### Three-tier synthesis (App. E.3)
 
-```
-HIGH:   c_j ≥ 0.7  AND  d < 0.3
-LOW:    c_j < 0.3  OR   d ≥ 0.7
-MEDIUM: otherwise
-```
+| Tier | Condition |
+|---|---|
+| **HIGH** | `c_j ≥ 0.7` **and** `d < 0.3` |
+| **LOW** | `c_j < 0.3` **or** `d ≥ 0.7` |
+| **MEDIUM** | otherwise |
 
 The answer is built primarily from HIGH-tier facts; MEDIUM facts are used only if
 consistent with HIGH; LOW facts only when no HIGH evidence exists (with explicit
@@ -87,7 +122,7 @@ uncertainty). Output format: `<think>...</think><answer>X</answer>`.
 
 ---
 
-## Tool library (Table 17)
+## 🧰 Tool library (Table 17)
 
 The paper's full library has 3 selection tools + 5 perception tools. **This
 release ships three perception-side components** and treats the rest as
@@ -96,18 +131,18 @@ release ships three perception-side components** and treats the rest as
 extensible”*).
 
 | Tool | Category | Cost | Status in this release |
-|---|---|---|---|
-| `assess_quality`   | Selection  | 0.10 | shipped (Eq. 2) |
-| `select_frames`    | Selection  | 0.15 | shipped (Eq. 3) |
-| `retrieve_frames`  | Selection  | 0.20 | shipped (pool-P retrieval; case study Tab. 7) |
-| **`detect_objects`** | Perception | 0.50 | **shipped — APE backend (det)** |
-| **`read_text`**      | Perception | 0.25 | **shipped — OCR via host VLM (ocr)** |
-| `caption_frame`    | Perception | 0.30 | plug-and-play template (add your own) |
-| `track_temporal`   | Perception | 0.70 | plug-and-play template (add your own) |
-| `recognize_action` | Perception | 0.60 | plug-and-play template (add your own) |
+|---|---|:---:|---|
+| `assess_quality`   | Selection  | 0.10 | ✅ shipped (Eq. 2) |
+| `select_frames`    | Selection  | 0.15 | ✅ shipped (Eq. 3) |
+| `retrieve_frames`  | Selection  | 0.20 | ✅ shipped (pool-P retrieval; case study Tab. 7) |
+| **`detect_objects`** | Perception | 0.50 | ✅ **shipped — APE backend (det)** |
+| **`read_text`**      | Perception | 0.25 | ✅ **shipped — OCR via host VLM (ocr)** |
+| `caption_frame`    | Perception | 0.30 | 🔌 plug-and-play template (add your own) |
+| `track_temporal`   | Perception | 0.70 | 🔌 plug-and-play template (add your own) |
+| `recognize_action` | Perception | 0.60 | 🔌 plug-and-play template (add your own) |
 
-**Released visual components: `det` (detect_objects), `ocr` (read_text), and the
-`APE` detection service (ape_tools/) that backs detection.**
+**Released visual components:** `det` (detect_objects), `ocr` (read_text), and the
+`APE` detection service (`ape_tools/`) that backs detection.
 
 ### Adding a perception tool (plug-and-play)
 
@@ -127,6 +162,7 @@ tools = build_perception_tools(vlm_fn, extra_tools={"caption_frame": MyCaptioner
 The router, the Eq. 4 confidence coupling, and the GRPO reward all work unchanged
 once the tool is registered — nothing in the orchestration layer needs editing.
 
+> [!IMPORTANT]
 > **Detection backbone note.** Paper Section B.1 names **GroundingDINO-T** for
 > `detect_objects`; this release wraps **APE** instead (the detector actually
 > used in the released code). The intrinsic confidence still follows B.1 — the
@@ -136,9 +172,9 @@ once the tool is registered — nothing in the orchestration layer needs editing
 
 ---
 
-## GRPO confidence-cost reward (Section 3.3)
+## 🎯 GRPO confidence-cost reward (Section 3.3)
 
-```
+```text
 R_cc(c_j, T_j) = c_j − λ·cost(T_j)                         # per call   (Eq. 5),  λ = 0.5
 R_cc^total(τ)  = (1/N_call) Σ_k R_cc                        # trajectory (Eq. 6)
 R_min-sq       = exp(−α·max(0, m − m*))                     # (Eq. 7),    α = 0.2
@@ -159,7 +195,7 @@ question and selected frames), and `m*` shapes the sub-query count through
 
 ---
 
-## Installation
+## ⚙️ Installation
 
 ```bash
 # 1. Host VLM (LLaVA-NeXT used here; swap for your own VLM)
@@ -184,7 +220,9 @@ cd <APE-root> && python demo/ape_service.py
 
 ---
 
-## Usage
+## 🚀 Usage
+
+**Command line**
 
 ```bash
 python -m rovid_pipeline.rovid_pipeline \
@@ -192,6 +230,8 @@ python -m rovid_pipeline.rovid_pipeline \
     --question "In what order does the drone pass the landmarks?" \
     --answer   "B"          # optional, enables GRPO reward computation
 ```
+
+**Python API**
 
 ```python
 from rovid_pipeline import RobustTOPipeline, process_video
@@ -220,9 +260,9 @@ def vlm_inference_fn(prompt: str, frames) -> str: ...       # vision + language
 
 ---
 
-## Repository structure
+## 📂 Repository structure
 
-```
+```text
 rovid_pipeline/
 ├── rovid_pipeline.py        # RobustTOPipeline (alias RoVidPipeline) + CLI
 ├── reward.py                # GRPO confidence-cost reward (Eqs. 5–10)
@@ -257,7 +297,7 @@ ROVID_SKIP_MODEL_LOAD=1 PYTHONPATH=. python -m pytest tests/ -q
 
 ---
 
-## Evaluation
+## 📊 Evaluation
 
 The paper evaluates on **UrbanVideo-Bench** and **VSI-Bench** (clean and
 RoVA-V1-corrupted variants), reporting multiple-choice accuracy (Section B.3).
@@ -279,7 +319,7 @@ summary JSON to `--output_dir`. The dataset loaders assume a simple MCQ schema
 
 ---
 
-## Key hyperparameters (Table 16)
+## 🔧 Key hyperparameters (Table 16)
 
 | Group | Parameter | Value |
 |---|---|---|
