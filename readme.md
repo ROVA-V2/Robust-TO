@@ -1,36 +1,48 @@
 <div align="center">
+
 # Robust-TO
+
 ### Confidence-Aware Tool Orchestration for Robust Video Understanding
-<!-- Replace the # placeholders with each author's homepage once available -->
-<p>
+
+<hr style="width: 60%;">
+
+<p style="font-size: 1.2em; margin: 0.5em 0;">
   <a href="https://github.com/codepassionor"><b>Yangfan&nbsp;He</b></a><sup>&nbsp;1,2</sup>
   &emsp;
   <a href="https://scholar.google.com/citations?user=3u0-O2sAAAAJ&hl=ko"><b>Yujin&nbsp;Choi</b></a><sup>&nbsp;1,3</sup>
   &emsp;
   <a href="https://scholar.google.com/citations?user=-5comoUAAAAJ&hl=ko"><b>Jaehong&nbsp;Yoon</b></a><sup>&nbsp;1,&dagger;</sup>
 </p>
-<p>
-  <sub>
-    <sup>1</sup>&nbsp;<i>NTU&nbsp;Singapore</i>
-    &emsp;
-    <sup>2</sup>&nbsp;<i>University&nbsp;of&nbsp;Minnesota,&nbsp;Twin&nbsp;Cities</i>
-    &emsp;
-    <sup>3</sup>&nbsp;<i>UNIST</i>
-  </sub>
+
+<p style="font-size: 0.9em; color: #555; margin-top: -0.2em;">
+  <sup>1</sup>&nbsp;<i>NTU&nbsp;Singapore</i>
+  &emsp;
+  <sup>2</sup>&nbsp;<i>University&nbsp;of&nbsp;Minnesota,&nbsp;Twin&nbsp;Cities</i>
+  &emsp;
+  <sup>3</sup>&nbsp;<i>UNIST</i>
 </p>
-<p>
-  <sub><sup>&dagger;</sup>&nbsp;Corresponding&nbsp;Author</sub>
+
+<p style="font-size: 0.85em; color: #777; margin-top: -0.2em;">
+  <sup>&dagger;</sup>&nbsp;Corresponding&nbsp;Author
 </p>
-<br/>
-<!-- Replace the # placeholders below with your real links once available -->
-<a href="#"><img src="https://img.shields.io/badge/Paper-arXiv-b31b1b.svg?style=flat-square" alt="Paper"></a>
-<a href="https://rova-v2.github.io/"><img src="https://img.shields.io/badge/Project-Page-1f6feb.svg?style=flat-square" alt="Project Page"></a>
-<a href="#"><img src="https://img.shields.io/badge/Python-3.10-3776AB.svg?style=flat-square&logo=python&logoColor=white" alt="Python 3.10"></a>
-<a href="#"><img src="https://img.shields.io/badge/License-MIT-green.svg?style=flat-square" alt="License"></a>
-</div>
+
+<hr style="width: 40%;">
+
+<p>
+  <a href="#"><img src="https://img.shields.io/badge/Paper-arXiv-b31b1b.svg?style=flat-square" alt="Paper"></a>
+  &nbsp;&nbsp;
+  <a href="https://rova-v2.github.io/"><img src="https://img.shields.io/badge/Project-Page-1f6feb.svg?style=flat-square" alt="Project Page"></a>
+  &nbsp;&nbsp;
+  <a href="#"><img src="https://img.shields.io/badge/Python-3.10-3776AB.svg?style=flat-square&logo=python&logoColor=white" alt="Python 3.10"></a>
+  &nbsp;&nbsp;
+  <a href="#"><img src="https://img.shields.io/badge/License-MIT-green.svg?style=flat-square" alt="License"></a>
+</p>
+
 <!--
 Contact: yhe32@e.ntu.edu.sg, {cs-yujin.choi, jaehong.yoon}@ntu.edu.sg
 -->
+
+</div>
 
 ---
 
